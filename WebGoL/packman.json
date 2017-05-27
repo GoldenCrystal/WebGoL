@@ -1,0 +1,38 @@
+{
+  "packages": {
+    "require.js": {
+      "path": "wwwroot/lib",
+      "version": "2.3.3",
+      "files": [
+        "require.min.js"
+      ]
+    },
+    "fetch": {
+      "path": "wwwroot/lib",
+      "version": "2.0.3",
+      "files": [
+        "fetch.min.js"
+      ]
+    },
+    "core-js": {
+      "path": "wwwroot/lib",
+      "version": "2.4.1",
+      "files": [
+        "core.min.js"
+      ]
+    },
+    "font-awesome": {
+      "path": "wwwroot/lib",
+      "version": "4.7.0",
+      "files": [
+        "css/font-awesome.min.css",
+        "fonts/fontawesome-webfont.eot",
+        "fonts/fontawesome-webfont.svg",
+        "fonts/fontawesome-webfont.ttf",
+        "fonts/fontawesome-webfont.woff",
+        "fonts/fontawesome-webfont.woff2",
+        "fonts/FontAwesome.otf"
+      ]
+    }
+  }
+}

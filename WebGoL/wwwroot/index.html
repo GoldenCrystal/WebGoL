@@ -1,0 +1,75 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Web Game of Life</title>
+    <link rel="stylesheet" href="/lib/css/font-awesome.min.css" />
+    <script>
+        // Polyfill for window.requestAnimationFrame, just in case.
+        if (!window.requestAnimationFrame) {
+            window.requestAnimationFrame = window.mozRequestAnimationFrame ||
+                window.webkitRequestAnimationFrame ||
+                window.msRequestAnimationFrame ||
+                function (callback) {
+                    window.setTimeout(callback, 1000 / 60);
+                };
+        }
+    </script>
+    <style type="text/css">
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        #golCanvas {
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #controlPanel {
+            position: absolute;
+            z-index: 999;
+            top: 0px;
+            right: 0px;
+            background: none no-repeat white;
+            border: 1px solid black;
+            padding: 5px;
+            margin: 10px;
+            opacity: .1;
+            transition-property: opacity;
+            transition-timing-function: ease-out;
+            transition-duration: .25s;
+        }
+
+            #controlPanel:hover {
+                opacity: 1;
+                transition-property: opacity;
+                transition-timing-function: ease-in;
+                transition-duration: .1s;
+            }
+
+        body.running .paused {
+            display: none;
+        }
+
+        body.paused .running {
+            display: none;
+        }
+    </style>
+</head>
+<body class="running">
+    <canvas id="golCanvas"></canvas>
+    <div id="controlPanel">
+        <form>
+            <button id="pauseSimulationButton" type="button"><span class="running"><i class="fa fa-pause"></i>&nbsp;Pause</span><span class="paused"><i class="fa fa-play"></i>&nbsp;Play</span></button>
+            <button id="clearCanvasButton" type="button"><i class="fa fa-bomb"></i>&nbsp;Clear</button>
+            <button id="reseedGameOfLifeButton" type="button"><i class="fa fa-random"></i>&nbsp;Reseed</button>
+            <button id="resetViewButton" type="button"><i class="fa fa-arrows"></i>&nbsp;Reset View</button>
+        </form>
+    </div>
+    <script src="/lib/core.min.js"></script>
+    <script src="/lib/fetch.min.js"></script>
+    <script data-main="index" src="/lib/require.min.js"></script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "noImplicitAny": false,
+    "noEmitOnError": true,
+    "removeComments": true,
+    "sourceMap": false,
+    "target": "es5",
+    "rootDir": "ts",
+    "module": "amd",
+    "outFile": "wwwroot/index.js",
+    "typeRoots": [ "node_modules/@types" ],
+    "types": [ "core-js" ]
+  },
+  "exclude": [
+    "node_modules",
+    "wwwroot"
+  ]
+}
