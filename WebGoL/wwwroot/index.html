@@ -62,10 +62,11 @@
     <canvas id="golCanvas"></canvas>
     <div id="controlPanel">
         <form>
-            <button id="pauseSimulationButton" type="button"><span class="running"><i class="fa fa-pause"></i>&nbsp;Pause</span><span class="paused"><i class="fa fa-play"></i>&nbsp;Play</span></button>
-            <button id="clearCanvasButton" type="button"><i class="fa fa-bomb"></i>&nbsp;Clear</button>
-            <button id="reseedGameOfLifeButton" type="button"><i class="fa fa-random"></i>&nbsp;Reseed</button>
-            <button id="resetViewButton" type="button"><i class="fa fa-arrows"></i>&nbsp;Reset View</button>
+            <button id="pauseSimulationButton" type="button" accesskey="P"><span class="running"><i class="fa fa-pause"></i>&nbsp;Pause</span><span class="paused"><i class="fa fa-play"></i>&nbsp;Play</span></button>
+            <button id="stepSimulationButton" type="button" accesskey="S"><i class="fa fa-step-forward"></i>&nbsp;Step</button>
+            <button id="clearCanvasButton" type="button" accesskey="C"><i class="fa fa-bomb"></i>&nbsp;Clear</button>
+            <button id="reseedGameOfLifeButton" type="button" accesskey="R"><i class="fa fa-random"></i>&nbsp;Reseed</button>
+            <button id="resetViewButton" type="button" accesskey="V"><i class="fa fa-arrows"></i>&nbsp;Reset View</button>
         </form>
     </div>
     <script src="/lib/core.min.js"></script>

@@ -103,6 +103,12 @@ define("vector-math", ["require", "exports"], function (require, exports) {
             if (ty === void 0) { ty = tx; }
             return new Vector2D(this.x + tx, this.y + ty);
         };
+        Vector2D.prototype.floor = function () {
+            return new Vector2D(Math.floor(this.x), Math.floor(this.y));
+        };
+        Vector2D.prototype.ceil = function () {
+            return new Vector2D(Math.ceil(this.x), Math.ceil(this.y));
+        };
         Vector2D.prototype.round = function () {
             return new Vector2D(Math.round(this.x), Math.round(this.y));
         };
@@ -147,6 +153,7 @@ define("index", ["require", "exports", "vector-math"], function (require, export
     var _angle = 0;
     var _canvas = null;
     var _pauseSimulationButton = null;
+    var _stepSimulationButton = null;
     var _clearCanvasButton = null;
     var _reseedGameOfLifeButton = null;
     var _resetViewButton = null;
@@ -159,6 +166,7 @@ define("index", ["require", "exports", "vector-math"], function (require, export
     var _currentProgramIsGameOfLife = false;
     var _isContextCreated = false;
     var _isSimulationPaused = false;
+    var _shouldPauseSimulationAfterNextFrame = false;
     var shaderValues = {
         "gol-vs": null,
         "gol-fs": null,
@@ -221,6 +229,7 @@ define("index", ["require", "exports", "vector-math"], function (require, export
     function start() {
         _canvas = document.getElementById("golCanvas");
         _pauseSimulationButton = document.getElementById("pauseSimulationButton");
+        _stepSimulationButton = document.getElementById("stepSimulationButton");
         _clearCanvasButton = document.getElementById("clearCanvasButton");
         _reseedGameOfLifeButton = document.getElementById("reseedGameOfLifeButton");
         _resetViewButton = document.getElementById("resetViewButton");
@@ -281,6 +290,7 @@ define("index", ["require", "exports", "vector-math"], function (require, export
         _canvas.addEventListener("mouseup", onMouseUp);
         _canvas.addEventListener("contextmenu", consumeEvent);
         _pauseSimulationButton.addEventListener("click", togglePause);
+        _stepSimulationButton.addEventListener("click", stepForward);
         _clearCanvasButton.addEventListener("click", function (e) { return clearPixels(_frontBuffer.texture); });
         _reseedGameOfLifeButton.addEventListener("click", function (e) { return setRandomPixels(_frontBuffer.texture, getSeedPixelCount()); });
         _resetViewButton.addEventListener("click", resetView);
@@ -347,12 +357,24 @@ define("index", ["require", "exports", "vector-math"], function (require, export
         }
     }
     function togglePause() {
-        document.body.className = (_isSimulationPaused = !_isSimulationPaused) ? "paused" : "running";
+        setPause(!_isSimulationPaused);
+    }
+    function setPause(shouldPause) {
+        if (shouldPause === void 0) { shouldPause = true; }
+        document.body.className = (_isSimulationPaused = shouldPause) ? "paused" : "running";
+    }
+    function stepForward() {
+        _isSimulationPaused = false;
+        _shouldPauseSimulationAfterNextFrame = true;
     }
     function drawScene() {
         resizeCanvas();
         if (!_isSimulationPaused) {
             iterateGameOfLife();
+            if (_shouldPauseSimulationAfterNextFrame) {
+                setPause();
+                _shouldPauseSimulationAfterNextFrame = false;
+            }
         }
         renderGameOfLife();
     }
@@ -417,7 +439,7 @@ define("index", ["require", "exports", "vector-math"], function (require, export
         return mapCanvasCoordinatesToViewportCoordinates(p).transform(vector_math_1.Matrix2D.multiply(vector_math_1.Matrix2D.multiply(_projectionMatrix, _rotationMatrix), _viewMatrix));
     }
     function mapCanvasCoordinatesToTexturePixelCoordinates(p) {
-        return mapCanvasCoordinatesToTextureCoordinates(p).scale(_bufferWidth - 1, _bufferHeight - 1).round();
+        return mapCanvasCoordinatesToTextureCoordinates(p).scale(_bufferWidth, _bufferHeight).floor();
     }
     function applyViewportSpaceTransformToView(transform) {
         var projection = vector_math_1.Matrix2D.multiply(_projectionMatrix, _rotationMatrix);

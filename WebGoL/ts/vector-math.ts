@@ -130,16 +130,24 @@ export class Vector2D {
         this.y = y;
     }
 
-    public scale(s: number);
-    public scale(sx: number, sy: number);
+    public scale(s: number): Vector2D;
+    public scale(sx: number, sy: number): Vector2D;
     public scale(sx: number = 0, sy: number = sx): Vector2D {
         return new Vector2D(this.x * sx, this.y * sy);
     }
 
-    public translate(t: number);
-    public translate(tx: number, ty: number);
+    public translate(t: number): Vector2D;
+    public translate(tx: number, ty: number): Vector2D;
     public translate(tx: number = 0, ty: number = tx): Vector2D {
         return new Vector2D(this.x + tx , this.y + ty);
+    }
+
+    public floor(): Vector2D {
+        return new Vector2D(Math.floor(this.x), Math.floor(this.y));
+    }
+
+    public ceil(): Vector2D {
+        return new Vector2D(Math.ceil(this.x), Math.ceil(this.y));
     }
 
     public round(): Vector2D {

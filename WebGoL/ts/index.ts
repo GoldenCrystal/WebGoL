@@ -37,6 +37,7 @@ var _angle = 0;
 
 var _canvas: HTMLCanvasElement = null;
 var _pauseSimulationButton: HTMLButtonElement = null;
+var _stepSimulationButton: HTMLButtonElement = null;
 var _clearCanvasButton: HTMLButtonElement = null;
 var _reseedGameOfLifeButton: HTMLButtonElement = null;
 var _resetViewButton: HTMLButtonElement = null;
@@ -49,6 +50,7 @@ var _golShaderProgram: GameOfLifeShaderProgram = null;
 var _currentProgramIsGameOfLife = false;
 var _isContextCreated = false;
 var _isSimulationPaused = false;
+var _shouldPauseSimulationAfterNextFrame = false;
 
 var shaderValues = {
     "gol-vs": null as string,
@@ -91,6 +93,7 @@ async function preloadData(): Promise<void> {
 function start() {
     _canvas = document.getElementById("golCanvas") as HTMLCanvasElement;
     _pauseSimulationButton = document.getElementById("pauseSimulationButton") as HTMLButtonElement;
+    _stepSimulationButton = document.getElementById("stepSimulationButton") as HTMLButtonElement;
     _clearCanvasButton = document.getElementById("clearCanvasButton") as HTMLButtonElement;
     _reseedGameOfLifeButton = document.getElementById("reseedGameOfLifeButton") as HTMLButtonElement;
     _resetViewButton = document.getElementById("resetViewButton") as HTMLButtonElement;
@@ -172,6 +175,7 @@ function setupInteractivity() {
     _canvas.addEventListener("mouseup", onMouseUp);
     _canvas.addEventListener("contextmenu", consumeEvent);
     _pauseSimulationButton.addEventListener("click", togglePause);
+    _stepSimulationButton.addEventListener("click", stepForward);
     _clearCanvasButton.addEventListener("click", e => clearPixels(_frontBuffer.texture));
     _reseedGameOfLifeButton.addEventListener("click", e => setRandomPixels(_frontBuffer.texture, getSeedPixelCount()));
     _resetViewButton.addEventListener("click", resetView);
@@ -237,13 +241,26 @@ function tick() {
 }
 
 function togglePause() {
-    document.body.className = (_isSimulationPaused = !_isSimulationPaused) ? "paused" : "running";
+    setPause(!_isSimulationPaused);
+}
+
+function setPause(shouldPause: boolean = true) {
+    document.body.className = (_isSimulationPaused = shouldPause) ? "paused" : "running";
+}
+
+function stepForward() {
+    _isSimulationPaused = false;
+    _shouldPauseSimulationAfterNextFrame = true;
 }
 
 function drawScene() {
     resizeCanvas();
     if (!_isSimulationPaused) {
         iterateGameOfLife();
+        if (_shouldPauseSimulationAfterNextFrame) {
+            setPause();
+            _shouldPauseSimulationAfterNextFrame = false;
+        }
     }
     renderGameOfLife();
 }
@@ -320,11 +337,11 @@ function mapCanvasCoordinatesToTextureCoordinates(p: Vector2D): Vector2D {
 }
 
 //function mapCanvasCoordinatesToClampedTexturePixelCoordinates(p: Vector2D): Vector2D {
-//    return mapCanvasCoordinatesToTextureCoordinates(p).frac().scale( _bufferWidth - 1, _bufferHeight - 1).round();
+//    return mapCanvasCoordinatesToTextureCoordinates(p).frac().scale( _bufferWidth, _bufferHeight).round();
 //}
 
 function mapCanvasCoordinatesToTexturePixelCoordinates(p: Vector2D): Vector2D {
-    return mapCanvasCoordinatesToTextureCoordinates(p).scale(_bufferWidth - 1, _bufferHeight - 1).round();
+    return mapCanvasCoordinatesToTextureCoordinates(p).scale(_bufferWidth, _bufferHeight).floor();
 }
 
 function applyViewportSpaceTransformToView(transform: Matrix2D) {
