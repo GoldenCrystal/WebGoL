@@ -30,6 +30,11 @@ interface GridVisualizationShaderProgram extends VisualizationShaderProgram {
     gridColorUniform: WebGLUniformLocation;
 }
 
+interface TrackedTouch {
+    identifier: number;
+    position: Vector2D;
+}
+
 const _bufferWidth = 2048;
 const _bufferHeight = 2048;
 // Define the reference projection matrix, used for transforming vertex coordinates into texture coordinates for a square viewport)
@@ -194,9 +199,13 @@ function getSeedPixelCount() {
 
 function setupInteractivity() {
     _canvas.addEventListener("wheel", onWheel);
-    _canvas.addEventListener("mousedown", onMouseDown);
-    _canvas.addEventListener("mousemove", onMouseMove);
-    _canvas.addEventListener("mouseup", onMouseUp);
+    _canvas.addEventListener("mousedown", onMouseDown, true);
+    _canvas.addEventListener("mousemove", onMouseMove, true);
+    _canvas.addEventListener("mouseup", onMouseUp, true);
+    _canvas.addEventListener("touchstart", onTouchStart);
+    _canvas.addEventListener("touchmove", onTouchMove);
+    _canvas.addEventListener("touchend", onTouchEnd);
+    _canvas.addEventListener("touchcancel", onTouchCancel);
     _canvas.addEventListener("contextmenu", consumeEvent);
     _gridVisibilityCheckbox.addEventListener("change", updateGridVisibility);
     _pauseSimulationButton.addEventListener("click", togglePause);
@@ -216,11 +225,11 @@ function clearPixels(texture: WebGLTexture) {
 
 function setRandomPixels(texture: WebGLTexture, pixelCount: number) {
     var buffer = new Uint8Array(_bufferWidth * _bufferHeight * 4);
-    
+
     for (var i = 0; i < pixelCount; i++) {
         var x = Math.round(Math.random() * (_bufferWidth - 1));
         var y = Math.round(Math.random() * (_bufferHeight - 1));
-        
+
         buffer.set(_white, (y * _bufferWidth + x) * 4);
     }
     _gl.bindTexture(_gl.TEXTURE_2D, texture);
@@ -312,7 +321,7 @@ function renderGameOfLife() {
     }
     _gl.activeTexture(_gl.TEXTURE0);
     _gl.bindTexture(_gl.TEXTURE_2D, _frontBuffer.texture);
-    if (_zoomLevelIndex < _neutralZoomLevelIndex) { // Switch to bilinear filtering specifically for the lower zoom levels
+    if (_zoomLevelIndex < NEUTRAL_ZOOM_LEVEL_INDEX) { // Switch to bilinear filtering specifically for the lower zoom levels
         _gl.generateMipmap(_gl.TEXTURE_2D);
         _gl.texParameteri(_gl.TEXTURE_2D, _gl.TEXTURE_MIN_FILTER, _gl.LINEAR_MIPMAP_LINEAR);
     }
@@ -320,13 +329,13 @@ function renderGameOfLife() {
     var finalViewMatrix = Matrix2D.multiply(Matrix2D.multiply(_projectionMatrix, _rotationMatrix), _viewMatrix);
     if (_isGridVisible) {
         _gl.uniform2f(_gridVisShaderProgram.gridPixelSizeUniform, _viewMatrix.m11 / _bufferWidth, _viewMatrix.m22 / _bufferHeight);
-        _gl.uniform2f(_gridVisShaderProgram.gridSpacingUniform, _zoomGridSizes[_zoomLevelIndex] / _bufferWidth, _zoomGridSizes[_zoomLevelIndex] / _bufferHeight);
+        _gl.uniform2f(_gridVisShaderProgram.gridSpacingUniform, ZOOM_GRID_SIZES[_zoomLevelIndex] / _bufferWidth, ZOOM_GRID_SIZES[_zoomLevelIndex] / _bufferHeight);
         _gl.uniform4f(_gridVisShaderProgram.gridColorUniform, 0.9, 0.9, 0.9, 1.0);
     }
     _gl.uniform3f(visShaderProgram.transformXUniform, finalViewMatrix.m11, finalViewMatrix.m12, finalViewMatrix.m13);
     _gl.uniform3f(visShaderProgram.transformYUniform, finalViewMatrix.m21, finalViewMatrix.m22, finalViewMatrix.m23);
     _gl.drawArrays(_gl.TRIANGLE_STRIP, 0, _rectangleVertexBuffer.itemCount);
-    if (_zoomLevelIndex < _neutralZoomLevelIndex) {
+    if (_zoomLevelIndex < NEUTRAL_ZOOM_LEVEL_INDEX) {
         _gl.texParameteri(_gl.TEXTURE_2D, _gl.TEXTURE_MIN_FILTER, _gl.NEAREST);
     }
 }
@@ -402,10 +411,10 @@ function applyViewportTranslationToView(translationInCanvasPixels: Vector2D) {
     applyViewportSpaceTransformToView(Matrix2D.translate(p.x, p.y));
 }
 
-const _neutralZoomLevelIndex = 2;
-var _zoomLevels = [0.25, 0.5, 1.0, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 8, 16, 32];
-var _zoomGridSizes = [32, 16, 8, 8, 8, 8, 4, 4, 4, 4, 1, 1, 1];
-var _zoomLevelIndex = _neutralZoomLevelIndex;
+const NEUTRAL_ZOOM_LEVEL_INDEX = 2;
+const ZOOM_LEVELS = [0.25, 0.5, 1.0, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 8, 16, 32];
+const ZOOM_GRID_SIZES = [32, 16, 8, 8, 8, 8, 4, 4, 4, 4, 1, 1, 1];
+var _zoomLevelIndex = NEUTRAL_ZOOM_LEVEL_INDEX;
 function onWheel(e: WheelEvent) {
     if (e.deltaY != 0) {
         e.stopPropagation();
@@ -413,7 +422,7 @@ function onWheel(e: WheelEvent) {
 
         var previousZoomLevelIndex = _zoomLevelIndex;
 
-        if (e.deltaY < 0 && _zoomLevelIndex + 1 < _zoomLevels.length) {
+        if (e.deltaY < 0 && _zoomLevelIndex + 1 < ZOOM_LEVELS.length) {
             _zoomLevelIndex++;
         } else if (e.deltaY > 0 && _zoomLevelIndex > 0) {
             _zoomLevelIndex--;
@@ -421,8 +430,8 @@ function onWheel(e: WheelEvent) {
             return;
         }
 
-        var relativeZoomFactor = _zoomLevels[previousZoomLevelIndex] / _zoomLevels[_zoomLevelIndex];
-        
+        var relativeZoomFactor = ZOOM_LEVELS[previousZoomLevelIndex] / ZOOM_LEVELS[_zoomLevelIndex];
+
         var mousePosition = mapCanvasCoordinatesToViewportCoordinates(new Vector2D(e.clientX, e.clientY));
 
         var transform = Matrix2D.multiply(Matrix2D.multiply(Matrix2D.translate(-mousePosition.x, -mousePosition.y), Matrix2D.scale(relativeZoomFactor, relativeZoomFactor)), Matrix2D.translate(mousePosition.x, mousePosition.y));
@@ -431,27 +440,45 @@ function onWheel(e: WheelEvent) {
     }
 }
 
+const ACTION_DRAW = 0;
+const ACTION_ERASE = 1;
+const ACTION_PAN = 2;
+const ACTION_ZOOM = 3;
+const TOUCH_MOUSE_BUTTON = 31415;
+
 var _mouseDownButton = -1;
 var _mouseLastPoint = null as Vector2D;
 
 function handleMouseMoveAction(point: Vector2D) {
+    var actionId: number;
+
     switch (_mouseDownButton) {
-        case 0:
-        case 2:
-            var a = mapCanvasCoordinatesToTexturePixelCoordinates(_mouseLastPoint);
-            var b = mapCanvasCoordinatesToTexturePixelCoordinates(point);
-            drawLine(_frontBuffer.texture, a.x, a.y, b.x, b.y, _mouseDownButton == 0);
+        case 0: actionId = ACTION_DRAW; break;
+        case 1: actionId = ACTION_PAN; break;
+        case 2: actionId = ACTION_ERASE; break;
+        default: return;
+    }
+
+    handleInputAction(actionId, _mouseLastPoint, point);
+}
+
+function handleInputAction(actionId: number, startPoint: Vector2D, endPoint: Vector2D) {
+    switch (actionId) {
+        case ACTION_DRAW:
+        case ACTION_ERASE:
+            var a = mapCanvasCoordinatesToTexturePixelCoordinates(startPoint);
+            var b = mapCanvasCoordinatesToTexturePixelCoordinates(endPoint);
+            drawLine(_frontBuffer.texture, a.x, a.y, b.x, b.y, actionId == ACTION_DRAW);
             break;
-        case 1:
-            applyViewportTranslationToView(_mouseLastPoint.subtract(point));
+        case ACTION_PAN:
+            applyViewportTranslationToView(startPoint.subtract(endPoint));
             break;
     }
 }
 
 function onMouseDown(e: MouseEvent) {
     if (_mouseDownButton == -1 && e.button >= 0 && e.button < 3) {
-        e.stopPropagation();
-        e.preventDefault();
+        consumeEvent(e);
 
         _mouseDownButton = e.button;
         _mouseLastPoint = new Vector2D(e.clientX, e.clientY);
@@ -460,21 +487,19 @@ function onMouseDown(e: MouseEvent) {
 
 function onMouseMove(e: MouseEvent) {
     if (_mouseDownButton >= 0 && _mouseDownButton < 3) {
-        e.stopPropagation();
-        e.preventDefault();
+        consumeEvent(e);
 
         var point = new Vector2D(e.clientX, e.clientY);
 
         handleMouseMoveAction(point);
-        
+
         _mouseLastPoint = point;
     }
 }
 
 function onMouseUp(e: MouseEvent) {
     if (_mouseDownButton >= 0 && _mouseDownButton < 3 && _mouseDownButton == e.button) {
-        e.stopPropagation();
-        e.preventDefault();
+        consumeEvent(e);
 
         handleMouseMoveAction(new Vector2D(e.clientX, e.clientY));
 
@@ -483,13 +508,98 @@ function onMouseUp(e: MouseEvent) {
     }
 }
 
+var _trackedTouches: TrackedTouch[] = [];
+var _touchAction: number;
+
+function onTouchStart(e: TouchEvent) {
+    if (_mouseDownButton < 0) {
+        consumeEvent(e);
+
+        var touches = e.changedTouches;
+
+        for (var i = 0; i < touches.length; i++) {
+            var touch = touches[i];
+            _trackedTouches.push({
+                identifier: touch.identifier,
+                position: new Vector2D(touch.pageX, touch.pageY)
+            });
+        }
+
+        _touchAction = ACTION_PAN;
+        _mouseDownButton = TOUCH_MOUSE_BUTTON;
+    }
+}
+
+function onTouchMove(e: TouchEvent) {
+    if (_mouseDownButton === TOUCH_MOUSE_BUTTON) {
+        consumeEvent(e);
+
+        var touches = e.changedTouches;
+
+        for (var i = 0; i < touches.length; i++) {
+            var touch = touches[i];
+            var index = findTrackedTouchIndex(touches[i].identifier);
+            var oldPosition = _trackedTouches[index].position;
+            var newPosition = new Vector2D(touch.pageX, touch.pageY);
+            _trackedTouches[index].position = newPosition;
+            handleInputAction(_touchAction, oldPosition, newPosition);
+        }
+    }
+}
+
+function onTouchEnd(e: TouchEvent) {
+    if (_mouseDownButton === TOUCH_MOUSE_BUTTON) {
+        consumeEvent(e);
+
+        var touches = e.changedTouches;
+
+        for (var i = 0; i < touches.length; i++) {
+            var touch = touches[i];
+            var index = findTrackedTouchIndex(touches[i].identifier);
+            var oldPosition = _trackedTouches[index].position;
+            var newPosition = new Vector2D(touch.pageX, touch.pageY);
+            handleInputAction(_touchAction, oldPosition, newPosition);
+            _trackedTouches.splice(index, 1);
+        }
+
+        if (_trackedTouches.length === 0) {
+            _mouseDownButton = -1;
+        }
+    }
+}
+
+function onTouchCancel(e: TouchEvent) {
+    if (_mouseDownButton === TOUCH_MOUSE_BUTTON) {
+        consumeEvent(e);
+
+        var touches = e.changedTouches;
+
+        for (var i = 0; i < touches.length; i++) {
+            var index = findTrackedTouchIndex(touches[i].identifier);
+            _trackedTouches.splice(index, 1);
+        }
+
+        if (_trackedTouches.length === 0) {
+            _mouseDownButton = -1;
+        }
+    }
+}
+
+function findTrackedTouchIndex(identifier: number): number {
+    for (var i = 0; i < _trackedTouches.length; i++) {
+        if (_trackedTouches[i].identifier == identifier) return i;
+    }
+
+    return -1;
+}
+
 function consumeEvent(e: Event) {
     e.stopPropagation();
     e.preventDefault();
 }
 
 function resetView() {
-    _zoomLevelIndex = _neutralZoomLevelIndex;
+    _zoomLevelIndex = NEUTRAL_ZOOM_LEVEL_INDEX;
     _viewMatrix = Matrix2D.identity();
 }
 

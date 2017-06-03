@@ -185,6 +185,10 @@ export class Vector2D {
         );
     }
 
+    public length() {
+        return Math.sqrt(this.x * this.x + this.y * this.y);
+    }
+
     public static zero(): Vector2D {
         return new Vector2D(0, 0);
     }
