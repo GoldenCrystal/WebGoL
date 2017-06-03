@@ -24,6 +24,12 @@ interface VisualizationShaderProgram extends WebGLProgram {
     vertexPositionAttribute: number;
 }
 
+interface GridVisualizationShaderProgram extends VisualizationShaderProgram {
+    gridPixelSizeUniform: WebGLUniformLocation;
+    gridSpacingUniform: WebGLUniformLocation;
+    gridColorUniform: WebGLUniformLocation;
+}
+
 const _bufferWidth = 2048;
 const _bufferHeight = 2048;
 // Define the reference projection matrix, used for transforming vertex coordinates into texture coordinates for a square viewport)
@@ -36,6 +42,7 @@ var _viewMatrix = Matrix2D.identity();
 var _angle = 0;
 
 var _canvas: HTMLCanvasElement = null;
+var _gridVisibilityCheckbox: HTMLInputElement = null;
 var _pauseSimulationButton: HTMLButtonElement = null;
 var _stepSimulationButton: HTMLButtonElement = null;
 var _clearCanvasButton: HTMLButtonElement = null;
@@ -46,17 +53,21 @@ var _rectangleVertexBuffer: VertexBufferDefinition = null;
 var _frontBuffer: FrameBufferDefinition = null;
 var _backBuffer: FrameBufferDefinition = null;
 var _visShaderProgram: VisualizationShaderProgram = null;
+var _gridVisShaderProgram: GridVisualizationShaderProgram = null;
 var _golShaderProgram: GameOfLifeShaderProgram = null;
-var _currentProgramIsGameOfLife = false;
+var _currentShaderProgramId = -1; // 0 - Game Of Life program; 1 - Standard Visualization Program; 2 - Grid Visualization Program
 var _isContextCreated = false;
 var _isSimulationPaused = false;
 var _shouldPauseSimulationAfterNextFrame = false;
+var _isGridVisible = false;
+var _shouldUpdateShader = false;
 
 var shaderValues = {
     "gol-vs": null as string,
     "gol-fs": null as string,
     "vis-vs": null as string,
     "vis-fs": null as string,
+    "vis-grid-fs": null as string,
 };
 
 run();
@@ -77,6 +88,7 @@ async function preloadData(): Promise<void> {
             fetch("/shaders/gol.frag"),
             fetch("/shaders/vis.vert"),
             fetch("/shaders/vis.frag"),
+            fetch("/shaders/vis.grid.frag"),
         ]);
         var textBodies = await Promise.all(responses.map(response => response.text()));
 
@@ -84,6 +96,7 @@ async function preloadData(): Promise<void> {
         shaderValues["gol-fs"] = textBodies[1];
         shaderValues["vis-vs"] = textBodies[2];
         shaderValues["vis-fs"] = textBodies[3];
+        shaderValues["vis-grid-fs"] = textBodies[4];
     }
     catch (e) {
         throw Error("Preloading failed.\n" + e.toString());
@@ -92,6 +105,7 @@ async function preloadData(): Promise<void> {
 
 function start() {
     _canvas = document.getElementById("golCanvas") as HTMLCanvasElement;
+    _gridVisibilityCheckbox = document.getElementById("gridVisibilityCheckbox") as HTMLInputElement;
     _pauseSimulationButton = document.getElementById("pauseSimulationButton") as HTMLButtonElement;
     _stepSimulationButton = document.getElementById("stepSimulationButton") as HTMLButtonElement;
     _clearCanvasButton = document.getElementById("clearCanvasButton") as HTMLButtonElement;
@@ -137,6 +151,7 @@ function setupWebGL() {
     }
 
     _visShaderProgram = createShaderProgram("vis-vs", "vis-fs") as VisualizationShaderProgram;
+    _gridVisShaderProgram = createShaderProgram("vis-vs", "vis-grid-fs") as GridVisualizationShaderProgram;
     _golShaderProgram = createShaderProgram("gol-vs", "gol-fs") as GameOfLifeShaderProgram;
 
     if (!_visShaderProgram || !_golShaderProgram) {
@@ -150,12 +165,21 @@ function setupWebGL() {
     _visShaderProgram.vertexPositionAttribute = _gl.getAttribLocation(_visShaderProgram, "aVertexPosition");
     _gl.enableVertexAttribArray(_visShaderProgram.vertexPositionAttribute);
 
+    _gridVisShaderProgram.samplerUniform = _gl.getUniformLocation(_gridVisShaderProgram, "uSampler");
+    _gridVisShaderProgram.transformXUniform = _gl.getUniformLocation(_gridVisShaderProgram, "uTransformX");
+    _gridVisShaderProgram.transformYUniform = _gl.getUniformLocation(_gridVisShaderProgram, "uTransformY");
+    _gridVisShaderProgram.vertexPositionAttribute = _gl.getAttribLocation(_gridVisShaderProgram, "aVertexPosition");
+    _gridVisShaderProgram.gridPixelSizeUniform = _gl.getUniformLocation(_gridVisShaderProgram, "uGridPixelSize");
+    _gridVisShaderProgram.gridSpacingUniform = _gl.getUniformLocation(_gridVisShaderProgram, "uGridSpacing");
+    _gridVisShaderProgram.gridColorUniform = _gl.getUniformLocation(_gridVisShaderProgram, "uGridColor");
+    _gl.enableVertexAttribArray(_gridVisShaderProgram.vertexPositionAttribute);
+
     _golShaderProgram.samplerUniform = _gl.getUniformLocation(_golShaderProgram, "uSampler");
     _golShaderProgram.pixelSizeUniform = _gl.getUniformLocation(_golShaderProgram, "uPixelSize");
     _golShaderProgram.vertexPositionAttribute = _gl.getAttribLocation(_golShaderProgram, "aVertexPosition");
     _gl.enableVertexAttribArray(_golShaderProgram.vertexPositionAttribute);
 
-    _currentProgramIsGameOfLife = false;
+    _currentShaderProgramId = -1;
 
     setRandomPixels(_frontBuffer.texture, getSeedPixelCount());
 
@@ -174,6 +198,7 @@ function setupInteractivity() {
     _canvas.addEventListener("mousemove", onMouseMove);
     _canvas.addEventListener("mouseup", onMouseUp);
     _canvas.addEventListener("contextmenu", consumeEvent);
+    _gridVisibilityCheckbox.addEventListener("change", updateGridVisibility);
     _pauseSimulationButton.addEventListener("click", togglePause);
     _stepSimulationButton.addEventListener("click", stepForward);
     _clearCanvasButton.addEventListener("click", e => clearPixels(_frontBuffer.texture));
@@ -234,7 +259,7 @@ function drawLine(texture: WebGLTexture, x0: number, y0: number, x1: number, y1:
 
 function tick() {
     if (_isContextCreated) {
-        //rotationMatrix = Matrix2D.multiply(Matrix2D.multiply(Matrix2D.translate(-0.5), Matrix2D.rotate((angle += 0.5) * Math.PI / 180)), Matrix2D.translate(0.5));
+        //_rotationMatrix = Matrix2D.multiply(Matrix2D.multiply(Matrix2D.translate(-0.5), Matrix2D.rotate((_angle += 0.5) * Math.PI / 180)), Matrix2D.translate(0.5));
         window.requestAnimationFrame(tick);
         drawScene();
     }
@@ -244,8 +269,16 @@ function togglePause() {
     setPause(!_isSimulationPaused);
 }
 
+function updateGridVisibility() {
+    setGridVisibility(_gridVisibilityCheckbox.checked);
+}
+
 function setPause(shouldPause: boolean = true) {
     document.body.className = (_isSimulationPaused = shouldPause) ? "paused" : "running";
+}
+
+function setGridVisibility(visible: boolean = true) {
+    _isGridVisible = visible;
 }
 
 function stepForward() {
@@ -269,19 +302,33 @@ function renderGameOfLife() {
     _gl.bindFramebuffer(_gl.FRAMEBUFFER, null);
     _gl.viewport(0, 0, _gl.drawingBufferWidth, _gl.drawingBufferHeight);
     _gl.clear(_gl.COLOR_BUFFER_BIT);
-    if (_currentProgramIsGameOfLife) {
-        _gl.useProgram(_visShaderProgram);
-        _currentProgramIsGameOfLife = false;
+    var requestedProgramId = _isGridVisible ? 2 : 1;
+    var visShaderProgram: VisualizationShaderProgram = _isGridVisible ? _gridVisShaderProgram : _visShaderProgram;
+    if (_currentShaderProgramId != requestedProgramId) {
+        _gl.useProgram(visShaderProgram);
+        _currentShaderProgramId = requestedProgramId;
         _gl.bindBuffer(_gl.ARRAY_BUFFER, _rectangleVertexBuffer.buffer);
-        _gl.vertexAttribPointer(_visShaderProgram.vertexPositionAttribute, _rectangleVertexBuffer.itemSize, _gl.FLOAT, false, 0, 0);
+        _gl.vertexAttribPointer(visShaderProgram.vertexPositionAttribute, _rectangleVertexBuffer.itemSize, _gl.FLOAT, false, 0, 0);
     }
     _gl.activeTexture(_gl.TEXTURE0);
     _gl.bindTexture(_gl.TEXTURE_2D, _frontBuffer.texture);
-    _gl.uniform1i(_visShaderProgram.samplerUniform, 0);
+    if (_zoomLevelIndex < _neutralZoomLevelIndex) { // Switch to bilinear filtering specifically for the lower zoom levels
+        _gl.generateMipmap(_gl.TEXTURE_2D);
+        _gl.texParameteri(_gl.TEXTURE_2D, _gl.TEXTURE_MIN_FILTER, _gl.LINEAR_MIPMAP_LINEAR);
+    }
+    _gl.uniform1i(visShaderProgram.samplerUniform, 0);
     var finalViewMatrix = Matrix2D.multiply(Matrix2D.multiply(_projectionMatrix, _rotationMatrix), _viewMatrix);
-    _gl.uniform3f(_visShaderProgram.transformXUniform, finalViewMatrix.m11, finalViewMatrix.m12, finalViewMatrix.m13);
-    _gl.uniform3f(_visShaderProgram.transformYUniform, finalViewMatrix.m21, finalViewMatrix.m22, finalViewMatrix.m23);
+    if (_isGridVisible) {
+        _gl.uniform2f(_gridVisShaderProgram.gridPixelSizeUniform, _viewMatrix.m11 / _bufferWidth, _viewMatrix.m22 / _bufferHeight);
+        _gl.uniform2f(_gridVisShaderProgram.gridSpacingUniform, _zoomGridSizes[_zoomLevelIndex] / _bufferWidth, _zoomGridSizes[_zoomLevelIndex] / _bufferHeight);
+        _gl.uniform4f(_gridVisShaderProgram.gridColorUniform, 0.9, 0.9, 0.9, 1.0);
+    }
+    _gl.uniform3f(visShaderProgram.transformXUniform, finalViewMatrix.m11, finalViewMatrix.m12, finalViewMatrix.m13);
+    _gl.uniform3f(visShaderProgram.transformYUniform, finalViewMatrix.m21, finalViewMatrix.m22, finalViewMatrix.m23);
     _gl.drawArrays(_gl.TRIANGLE_STRIP, 0, _rectangleVertexBuffer.itemCount);
+    if (_zoomLevelIndex < _neutralZoomLevelIndex) {
+        _gl.texParameteri(_gl.TEXTURE_2D, _gl.TEXTURE_MIN_FILTER, _gl.NEAREST);
+    }
 }
 
 function iterateGameOfLife() {
@@ -290,9 +337,9 @@ function iterateGameOfLife() {
     _gl.bindFramebuffer(_gl.FRAMEBUFFER, currentBuffer.framebuffer);
     _gl.viewport(0, 0, _bufferWidth, _bufferHeight);
     _gl.clear(_gl.COLOR_BUFFER_BIT);
-    if (!_currentProgramIsGameOfLife) {
+    if (_currentShaderProgramId != 0) {
         _gl.useProgram(_golShaderProgram);
-        _currentProgramIsGameOfLife = true;
+        _currentShaderProgramId = 0;
         _gl.bindBuffer(_gl.ARRAY_BUFFER, _rectangleVertexBuffer.buffer);
         _gl.vertexAttribPointer(_golShaderProgram.vertexPositionAttribute, _rectangleVertexBuffer.itemSize, _gl.FLOAT, false, 0, 0);
     }
@@ -355,8 +402,10 @@ function applyViewportTranslationToView(translationInCanvasPixels: Vector2D) {
     applyViewportSpaceTransformToView(Matrix2D.translate(p.x, p.y));
 }
 
-var _zoomLevels = [1.0, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 8, 16];
-var _zoomLevelIndex = 0;
+const _neutralZoomLevelIndex = 2;
+var _zoomLevels = [0.25, 0.5, 1.0, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 8, 16, 32];
+var _zoomGridSizes = [32, 16, 8, 8, 8, 8, 4, 4, 4, 4, 1, 1, 1];
+var _zoomLevelIndex = _neutralZoomLevelIndex;
 function onWheel(e: WheelEvent) {
     if (e.deltaY != 0) {
         e.stopPropagation();
@@ -440,7 +489,7 @@ function consumeEvent(e: Event) {
 }
 
 function resetView() {
-    _zoomLevelIndex = 0;
+    _zoomLevelIndex = _neutralZoomLevelIndex;
     _viewMatrix = Matrix2D.identity();
 }
 
@@ -508,12 +557,13 @@ function createFrameBuffer(width: number, height: number): FrameBufferDefinition
     }
     _gl.bindTexture(_gl.TEXTURE_2D, texture);
     //gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_BASE_LEVEL, 0);
-    //gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAX_LEVEL, 0);
+    //gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAX_LEVEL, 2);
     _gl.texParameteri(_gl.TEXTURE_2D, _gl.TEXTURE_MAG_FILTER, _gl.NEAREST);
     _gl.texParameteri(_gl.TEXTURE_2D, _gl.TEXTURE_MIN_FILTER, _gl.NEAREST);
     _gl.texParameteri(_gl.TEXTURE_2D, _gl.TEXTURE_WRAP_S, _gl.REPEAT);
     _gl.texParameteri(_gl.TEXTURE_2D, _gl.TEXTURE_WRAP_T, _gl.REPEAT);
-    _gl.texImage2D(_gl.TEXTURE_2D, 0, _gl.RGBA, width, height, 0, _gl.RGBA, _gl.UNSIGNED_BYTE, null);
+    _gl.texImage2D(_gl.TEXTURE_2D, 0, _gl.RGBA, width, height, 0, _gl.RGBA, _gl.UNSIGNED_BYTE, null); // Update to texStorage2D when WebGL 2.0 is out.
+    _gl.generateMipmap(_gl.TEXTURE_2D);
     _gl.framebufferTexture2D(_gl.FRAMEBUFFER, _gl.COLOR_ATTACHMENT0, _gl.TEXTURE_2D, texture, 0);
     _gl.bindTexture(_gl.TEXTURE_2D, null);
     _gl.bindFramebuffer(_gl.FRAMEBUFFER, null);

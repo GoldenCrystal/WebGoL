@@ -20,6 +20,21 @@
             margin: 0;
             padding: 0;
             overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 13px;
+        }
+
+        input, label, button {
+            margin: 0;
+            font-size: 13px;
+        }
+
+            input[type="checkbox"] {
+                vertical-align: middle;
+            }
+
+        label {
+            display: inline-block;
         }
 
         #golCanvas {
@@ -34,7 +49,7 @@
             right: 0px;
             background: none no-repeat white;
             border: 1px solid black;
-            padding: 5px;
+            padding: 3px;
             margin: 10px;
             opacity: .1;
             transition-property: opacity;
@@ -49,6 +64,49 @@
                 transition-duration: .1s;
             }
 
+            #controlPanel input[type="checkbox"] {
+                margin: 0 2px 0 4px;
+            }
+
+                #controlPanel input[type="checkbox"] + label {
+                    margin: 0 4px 0 2px;
+                }
+
+            #controlPanel button {
+                margin: 2px;
+            }
+
+        #footer {
+            position: absolute;
+            z-index: 998;
+            bottom: 0px;
+            right: 0px;
+            text-shadow: 3px white;
+            margin: 4px 8px;
+        }
+
+            #footer a.github-link {
+                font-size: 10px;
+                text-decoration: none;
+                color: #08F;
+            }
+
+                #footer a.github-link:link {
+                    color: #08F;
+                }
+
+                #footer a.github-link:visited {
+                    color: #84f;
+                }
+
+                #footer a.github-link:hover {
+                    color: #0AF;
+                }
+
+                #footer a.github-link:active {
+                    color: #04f;
+                }
+
         body.running .paused {
             display: none;
         }
@@ -61,16 +119,13 @@
 <body class="running">
     <canvas id="golCanvas"></canvas>
     <div id="controlPanel">
-        <form>
-            <button id="pauseSimulationButton" type="button" accesskey="P"><span class="running"><i class="fa fa-pause"></i>&nbsp;Pause</span><span class="paused"><i class="fa fa-play"></i>&nbsp;Play</span></button>
-            <button id="stepSimulationButton" type="button" accesskey="S"><i class="fa fa-step-forward"></i>&nbsp;Step</button>
-            <button id="clearCanvasButton" type="button" accesskey="C"><i class="fa fa-bomb"></i>&nbsp;Clear</button>
-            <button id="reseedGameOfLifeButton" type="button" accesskey="R"><i class="fa fa-random"></i>&nbsp;Reseed</button>
-            <button id="resetViewButton" type="button" accesskey="V"><i class="fa fa-arrows"></i>&nbsp;Reset View</button>
-        </form>
+        <form><input id="gridVisibilityCheckbox" type="checkbox" accesskey="G" /><label for="gridVisibilityCheckbox">Show grid</label><button id="pauseSimulationButton" type="button" accesskey="P"><span class="running"><i class="fa fa-pause"></i>&nbsp;Pause</span><span class="paused"><i class="fa fa-play"></i>&nbsp;Play</span></button><button id="stepSimulationButton" type="button" accesskey="S"><i class="fa fa-step-forward"></i>&nbsp;Step</button><button id="clearCanvasButton" type="button" accesskey="C"><i class="fa fa-bomb"></i>&nbsp;Clear</button><button id="reseedGameOfLifeButton" type="button" accesskey="R"><i class="fa fa-random"></i>&nbsp;Reseed</button><button id="resetViewButton" type="button" accesskey="V"><i class="fa fa-arrows"></i>&nbsp;Reset View</button></form>
     </div>
     <script src="/lib/core.min.js"></script>
     <script src="/lib/fetch.min.js"></script>
     <script data-main="index" src="/lib/require.min.js"></script>
+    <div id="footer">
+        <span><i class="fa fa-github"></i>&nbsp;<a class="github-link" href="https://www.github.com/GoldenCrystal/WebGoL">View on github</a></span>
+    </div>
 </body>
 </html>

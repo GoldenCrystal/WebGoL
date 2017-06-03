@@ -152,6 +152,7 @@ define("index", ["require", "exports", "vector-math"], function (require, export
     var _viewMatrix = vector_math_1.Matrix2D.identity();
     var _angle = 0;
     var _canvas = null;
+    var _gridVisibilityCheckbox = null;
     var _pauseSimulationButton = null;
     var _stepSimulationButton = null;
     var _clearCanvasButton = null;
@@ -162,16 +163,20 @@ define("index", ["require", "exports", "vector-math"], function (require, export
     var _frontBuffer = null;
     var _backBuffer = null;
     var _visShaderProgram = null;
+    var _gridVisShaderProgram = null;
     var _golShaderProgram = null;
-    var _currentProgramIsGameOfLife = false;
+    var _currentShaderProgramId = -1;
     var _isContextCreated = false;
     var _isSimulationPaused = false;
     var _shouldPauseSimulationAfterNextFrame = false;
+    var _isGridVisible = false;
+    var _shouldUpdateShader = false;
     var shaderValues = {
         "gol-vs": null,
         "gol-fs": null,
         "vis-vs": null,
         "vis-fs": null,
+        "vis-grid-fs": null,
     };
     run();
     function run() {
@@ -207,6 +212,7 @@ define("index", ["require", "exports", "vector-math"], function (require, export
                                 fetch("/shaders/gol.frag"),
                                 fetch("/shaders/vis.vert"),
                                 fetch("/shaders/vis.frag"),
+                                fetch("/shaders/vis.grid.frag"),
                             ])];
                     case 1:
                         responses = _a.sent();
@@ -217,6 +223,7 @@ define("index", ["require", "exports", "vector-math"], function (require, export
                         shaderValues["gol-fs"] = textBodies[1];
                         shaderValues["vis-vs"] = textBodies[2];
                         shaderValues["vis-fs"] = textBodies[3];
+                        shaderValues["vis-grid-fs"] = textBodies[4];
                         return [3 /*break*/, 4];
                     case 3:
                         e_2 = _a.sent();
@@ -228,6 +235,7 @@ define("index", ["require", "exports", "vector-math"], function (require, export
     }
     function start() {
         _canvas = document.getElementById("golCanvas");
+        _gridVisibilityCheckbox = document.getElementById("gridVisibilityCheckbox");
         _pauseSimulationButton = document.getElementById("pauseSimulationButton");
         _stepSimulationButton = document.getElementById("stepSimulationButton");
         _clearCanvasButton = document.getElementById("clearCanvasButton");
@@ -261,6 +269,7 @@ define("index", ["require", "exports", "vector-math"], function (require, export
             return;
         }
         _visShaderProgram = createShaderProgram("vis-vs", "vis-fs");
+        _gridVisShaderProgram = createShaderProgram("vis-vs", "vis-grid-fs");
         _golShaderProgram = createShaderProgram("gol-vs", "gol-fs");
         if (!_visShaderProgram || !_golShaderProgram) {
             console.error("Could not create shader programs.");
@@ -271,11 +280,19 @@ define("index", ["require", "exports", "vector-math"], function (require, export
         _visShaderProgram.transformYUniform = _gl.getUniformLocation(_visShaderProgram, "uTransformY");
         _visShaderProgram.vertexPositionAttribute = _gl.getAttribLocation(_visShaderProgram, "aVertexPosition");
         _gl.enableVertexAttribArray(_visShaderProgram.vertexPositionAttribute);
+        _gridVisShaderProgram.samplerUniform = _gl.getUniformLocation(_gridVisShaderProgram, "uSampler");
+        _gridVisShaderProgram.transformXUniform = _gl.getUniformLocation(_gridVisShaderProgram, "uTransformX");
+        _gridVisShaderProgram.transformYUniform = _gl.getUniformLocation(_gridVisShaderProgram, "uTransformY");
+        _gridVisShaderProgram.vertexPositionAttribute = _gl.getAttribLocation(_gridVisShaderProgram, "aVertexPosition");
+        _gridVisShaderProgram.gridPixelSizeUniform = _gl.getUniformLocation(_gridVisShaderProgram, "uGridPixelSize");
+        _gridVisShaderProgram.gridSpacingUniform = _gl.getUniformLocation(_gridVisShaderProgram, "uGridSpacing");
+        _gridVisShaderProgram.gridColorUniform = _gl.getUniformLocation(_gridVisShaderProgram, "uGridColor");
+        _gl.enableVertexAttribArray(_gridVisShaderProgram.vertexPositionAttribute);
         _golShaderProgram.samplerUniform = _gl.getUniformLocation(_golShaderProgram, "uSampler");
         _golShaderProgram.pixelSizeUniform = _gl.getUniformLocation(_golShaderProgram, "uPixelSize");
         _golShaderProgram.vertexPositionAttribute = _gl.getAttribLocation(_golShaderProgram, "aVertexPosition");
         _gl.enableVertexAttribArray(_golShaderProgram.vertexPositionAttribute);
-        _currentProgramIsGameOfLife = false;
+        _currentShaderProgramId = -1;
         setRandomPixels(_frontBuffer.texture, getSeedPixelCount());
         _isContextCreated = true;
         tick();
@@ -289,6 +306,7 @@ define("index", ["require", "exports", "vector-math"], function (require, export
         _canvas.addEventListener("mousemove", onMouseMove);
         _canvas.addEventListener("mouseup", onMouseUp);
         _canvas.addEventListener("contextmenu", consumeEvent);
+        _gridVisibilityCheckbox.addEventListener("change", updateGridVisibility);
         _pauseSimulationButton.addEventListener("click", togglePause);
         _stepSimulationButton.addEventListener("click", stepForward);
         _clearCanvasButton.addEventListener("click", function (e) { return clearPixels(_frontBuffer.texture); });
@@ -359,9 +377,16 @@ define("index", ["require", "exports", "vector-math"], function (require, export
     function togglePause() {
         setPause(!_isSimulationPaused);
     }
+    function updateGridVisibility() {
+        setGridVisibility(_gridVisibilityCheckbox.checked);
+    }
     function setPause(shouldPause) {
         if (shouldPause === void 0) { shouldPause = true; }
         document.body.className = (_isSimulationPaused = shouldPause) ? "paused" : "running";
+    }
+    function setGridVisibility(visible) {
+        if (visible === void 0) { visible = true; }
+        _isGridVisible = visible;
     }
     function stepForward() {
         _isSimulationPaused = false;
@@ -382,28 +407,42 @@ define("index", ["require", "exports", "vector-math"], function (require, export
         _gl.bindFramebuffer(_gl.FRAMEBUFFER, null);
         _gl.viewport(0, 0, _gl.drawingBufferWidth, _gl.drawingBufferHeight);
         _gl.clear(_gl.COLOR_BUFFER_BIT);
-        if (_currentProgramIsGameOfLife) {
-            _gl.useProgram(_visShaderProgram);
-            _currentProgramIsGameOfLife = false;
+        var requestedProgramId = _isGridVisible ? 2 : 1;
+        var visShaderProgram = _isGridVisible ? _gridVisShaderProgram : _visShaderProgram;
+        if (_currentShaderProgramId != requestedProgramId) {
+            _gl.useProgram(visShaderProgram);
+            _currentShaderProgramId = requestedProgramId;
             _gl.bindBuffer(_gl.ARRAY_BUFFER, _rectangleVertexBuffer.buffer);
-            _gl.vertexAttribPointer(_visShaderProgram.vertexPositionAttribute, _rectangleVertexBuffer.itemSize, _gl.FLOAT, false, 0, 0);
+            _gl.vertexAttribPointer(visShaderProgram.vertexPositionAttribute, _rectangleVertexBuffer.itemSize, _gl.FLOAT, false, 0, 0);
         }
         _gl.activeTexture(_gl.TEXTURE0);
         _gl.bindTexture(_gl.TEXTURE_2D, _frontBuffer.texture);
-        _gl.uniform1i(_visShaderProgram.samplerUniform, 0);
+        if (_zoomLevelIndex < _neutralZoomLevelIndex) {
+            _gl.generateMipmap(_gl.TEXTURE_2D);
+            _gl.texParameteri(_gl.TEXTURE_2D, _gl.TEXTURE_MIN_FILTER, _gl.LINEAR_MIPMAP_LINEAR);
+        }
+        _gl.uniform1i(visShaderProgram.samplerUniform, 0);
         var finalViewMatrix = vector_math_1.Matrix2D.multiply(vector_math_1.Matrix2D.multiply(_projectionMatrix, _rotationMatrix), _viewMatrix);
-        _gl.uniform3f(_visShaderProgram.transformXUniform, finalViewMatrix.m11, finalViewMatrix.m12, finalViewMatrix.m13);
-        _gl.uniform3f(_visShaderProgram.transformYUniform, finalViewMatrix.m21, finalViewMatrix.m22, finalViewMatrix.m23);
+        if (_isGridVisible) {
+            _gl.uniform2f(_gridVisShaderProgram.gridPixelSizeUniform, _viewMatrix.m11 / _bufferWidth, _viewMatrix.m22 / _bufferHeight);
+            _gl.uniform2f(_gridVisShaderProgram.gridSpacingUniform, _zoomGridSizes[_zoomLevelIndex] / _bufferWidth, _zoomGridSizes[_zoomLevelIndex] / _bufferHeight);
+            _gl.uniform4f(_gridVisShaderProgram.gridColorUniform, 0.9, 0.9, 0.9, 1.0);
+        }
+        _gl.uniform3f(visShaderProgram.transformXUniform, finalViewMatrix.m11, finalViewMatrix.m12, finalViewMatrix.m13);
+        _gl.uniform3f(visShaderProgram.transformYUniform, finalViewMatrix.m21, finalViewMatrix.m22, finalViewMatrix.m23);
         _gl.drawArrays(_gl.TRIANGLE_STRIP, 0, _rectangleVertexBuffer.itemCount);
+        if (_zoomLevelIndex < _neutralZoomLevelIndex) {
+            _gl.texParameteri(_gl.TEXTURE_2D, _gl.TEXTURE_MIN_FILTER, _gl.NEAREST);
+        }
     }
     function iterateGameOfLife() {
         var currentBuffer = _backBuffer;
         _gl.bindFramebuffer(_gl.FRAMEBUFFER, currentBuffer.framebuffer);
         _gl.viewport(0, 0, _bufferWidth, _bufferHeight);
         _gl.clear(_gl.COLOR_BUFFER_BIT);
-        if (!_currentProgramIsGameOfLife) {
+        if (_currentShaderProgramId != 0) {
             _gl.useProgram(_golShaderProgram);
-            _currentProgramIsGameOfLife = true;
+            _currentShaderProgramId = 0;
             _gl.bindBuffer(_gl.ARRAY_BUFFER, _rectangleVertexBuffer.buffer);
             _gl.vertexAttribPointer(_golShaderProgram.vertexPositionAttribute, _rectangleVertexBuffer.itemSize, _gl.FLOAT, false, 0, 0);
         }
@@ -449,8 +488,10 @@ define("index", ["require", "exports", "vector-math"], function (require, export
         var p = mapCanvasTranslationVectorToViewportTranslationVector(translationInCanvasPixels);
         applyViewportSpaceTransformToView(vector_math_1.Matrix2D.translate(p.x, p.y));
     }
-    var _zoomLevels = [1.0, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 8, 16];
-    var _zoomLevelIndex = 0;
+    var _neutralZoomLevelIndex = 2;
+    var _zoomLevels = [0.25, 0.5, 1.0, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 8, 16, 32];
+    var _zoomGridSizes = [32, 16, 8, 8, 8, 8, 4, 4, 4, 4, 1, 1, 1];
+    var _zoomLevelIndex = _neutralZoomLevelIndex;
     function onWheel(e) {
         if (e.deltaY != 0) {
             e.stopPropagation();
@@ -517,7 +558,7 @@ define("index", ["require", "exports", "vector-math"], function (require, export
         e.preventDefault();
     }
     function resetView() {
-        _zoomLevelIndex = 0;
+        _zoomLevelIndex = _neutralZoomLevelIndex;
         _viewMatrix = vector_math_1.Matrix2D.identity();
     }
     function createRectangleVertexBuffer() {
@@ -576,6 +617,7 @@ define("index", ["require", "exports", "vector-math"], function (require, export
         _gl.texParameteri(_gl.TEXTURE_2D, _gl.TEXTURE_WRAP_S, _gl.REPEAT);
         _gl.texParameteri(_gl.TEXTURE_2D, _gl.TEXTURE_WRAP_T, _gl.REPEAT);
         _gl.texImage2D(_gl.TEXTURE_2D, 0, _gl.RGBA, width, height, 0, _gl.RGBA, _gl.UNSIGNED_BYTE, null);
+        _gl.generateMipmap(_gl.TEXTURE_2D);
         _gl.framebufferTexture2D(_gl.FRAMEBUFFER, _gl.COLOR_ATTACHMENT0, _gl.TEXTURE_2D, texture, 0);
         _gl.bindTexture(_gl.TEXTURE_2D, null);
         _gl.bindFramebuffer(_gl.FRAMEBUFFER, null);
