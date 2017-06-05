@@ -70,6 +70,8 @@ var _shouldUpdateShader = false;
 var shaderValues = {
     "gol-vs": null as string,
     "gol-fs": null as string,
+    "gol-ml-fs": null as string,
+    "hl-fs": null as string,
     "vis-vs": null as string,
     "vis-fs": null as string,
     "vis-grid-fs": null as string,
@@ -91,6 +93,8 @@ async function preloadData(): Promise<void> {
         var responses = await Promise.all([
             fetch("/shaders/gol.vert"),
             fetch("/shaders/gol.frag"),
+            fetch("/shaders/gol.multilayer.frag"),
+            fetch("/shaders/highlife.frag"),
             fetch("/shaders/vis.vert"),
             fetch("/shaders/vis.frag"),
             fetch("/shaders/vis.grid.frag"),
@@ -99,9 +103,11 @@ async function preloadData(): Promise<void> {
 
         shaderValues["gol-vs"] = textBodies[0];
         shaderValues["gol-fs"] = textBodies[1];
-        shaderValues["vis-vs"] = textBodies[2];
-        shaderValues["vis-fs"] = textBodies[3];
-        shaderValues["vis-grid-fs"] = textBodies[4];
+        shaderValues["gol-ml-fs"] = textBodies[2];
+        shaderValues["hl-fs"] = textBodies[3];
+        shaderValues["vis-vs"] = textBodies[4];
+        shaderValues["vis-fs"] = textBodies[5];
+        shaderValues["vis-grid-fs"] = textBodies[6];
     }
     catch (e) {
         throw Error("Preloading failed.\n" + e.toString());
@@ -130,7 +136,14 @@ function start() {
 function setupWebGL() {
     _isContextCreated = false;
 
-    _gl = _canvas.getContext("webgl") || _canvas.getContext("experimental-webgl") || null;
+    var options: WebGLContextAttributes = {
+        alpha: false,
+        depth: false,
+        stencil: false,
+        antialias: false,
+        preserveDrawingBuffer: false
+    };
+    _gl = _canvas.getContext("webgl", options) || _canvas.getContext("experimental-webgl", options) || null;
 
     if (!_gl) {
         console.error("Could not get WebGL context.");
@@ -144,6 +157,9 @@ function setupWebGL() {
 
     _gl.clearColor(0.0, 0.0, 0.0, 1.0);
     _gl.clear(_gl.COLOR_BUFFER_BIT | _gl.DEPTH_BUFFER_BIT);
+
+    _gl.disable(_gl.BLEND);
+    _gl.disable(_gl.DEPTH_TEST);
 
     if (!(_frontBuffer = createFrameBuffer(_bufferWidth, _bufferHeight))) {
         console.error("Could not create frame buffer.");
@@ -215,23 +231,44 @@ function setupInteractivity() {
     _resetViewButton.addEventListener("click", resetView);
 }
 
+const _red = new Uint8Array([255, 0, 0, 255]);
+const _yellow = new Uint8Array([255, 255, 0, 255]);
+const _green = new Uint8Array([0, 255, 0, 255]);
+const _cyan = new Uint8Array([0, 255, 255, 255]);
+const _blue = new Uint8Array([0, 0, 255, 255]);
+const _magenta = new Uint8Array([255, 0, 255, 255]);
 const _white = new Uint8Array([255, 255, 255, 255]);
-const _black = new Uint8Array([0, 0, 0, 0]);
+const _black = new Uint8Array([0, 0, 0, 255]);
+
+const _colors = [_red, _yellow, _green, _cyan, _blue, _magenta, _white];
+
+function createInitializedBuffer(): Uint8Array {
+    var buffer = new Uint8Array((_bufferWidth * _bufferHeight) << 2);
+
+    var n = _bufferWidth * _bufferHeight;
+    for (var i = 0; i < n; i++) {
+        buffer.set(_black, i << 2);
+    }
+
+    return buffer;
+}
 
 function clearPixels(texture: WebGLTexture) {
     _gl.bindTexture(_gl.TEXTURE_2D, texture);
-    _gl.texImage2D(_gl.TEXTURE_2D, 0, _gl.RGBA, _bufferWidth, _bufferHeight, 0, _gl.RGBA, _gl.UNSIGNED_BYTE, new Uint8Array(_bufferWidth * _bufferHeight * 4));
+    _gl.texImage2D(_gl.TEXTURE_2D, 0, _gl.RGBA, _bufferWidth, _bufferHeight, 0, _gl.RGBA, _gl.UNSIGNED_BYTE, createInitializedBuffer());
 }
 
 function setRandomPixels(texture: WebGLTexture, pixelCount: number) {
-    var buffer = new Uint8Array(_bufferWidth * _bufferHeight * 4);
+    var buffer = createInitializedBuffer();
 
     for (var i = 0; i < pixelCount; i++) {
-        var x = Math.round(Math.random() * (_bufferWidth - 1));
-        var y = Math.round(Math.random() * (_bufferHeight - 1));
+        let x = Math.round(Math.random() * (_bufferWidth - 1));
+        let y = Math.round(Math.random() * (_bufferHeight - 1));
+        let color = _white/*_colors[Math.round(Math.random() * (_colors.length - 1))]*/;
 
-        buffer.set(_white, (y * _bufferWidth + x) * 4);
+        buffer.set(color, (y * _bufferWidth + x) << 2);
     }
+
     _gl.bindTexture(_gl.TEXTURE_2D, texture);
     _gl.texImage2D(_gl.TEXTURE_2D, 0, _gl.RGBA, _bufferWidth, _bufferHeight, 0, _gl.RGBA, _gl.UNSIGNED_BYTE, buffer);
 }
@@ -258,7 +295,7 @@ function drawLine(texture: WebGLTexture, x0: number, y0: number, x1: number, y1:
         writePixel(texture, cx, cy, set);
 
         if ((x0 == x1) && (y0 == y1)) break;
-        var e2 = err << 1;
+        let e2 = err << 1;
         if (e2 > -dy) { err -= dy; x0 += sx; cx += sx; }
         if (e2 < dx) { err += dx; y0 += sy; cy += sy; }
         if (cx >= _bufferWidth) cx -= _bufferWidth;
@@ -518,7 +555,7 @@ function onTouchStart(e: TouchEvent) {
         var touches = e.changedTouches;
 
         for (var i = 0; i < touches.length; i++) {
-            var touch = touches[i];
+            let touch = touches[i];
             _trackedTouches.push({
                 identifier: touch.identifier,
                 position: new Vector2D(touch.pageX, touch.pageY)
@@ -537,10 +574,10 @@ function onTouchMove(e: TouchEvent) {
         var touches = e.changedTouches;
 
         for (var i = 0; i < touches.length; i++) {
-            var touch = touches[i];
-            var index = findTrackedTouchIndex(touches[i].identifier);
-            var oldPosition = _trackedTouches[index].position;
-            var newPosition = new Vector2D(touch.pageX, touch.pageY);
+            let touch = touches[i];
+            let index = findTrackedTouchIndex(touches[i].identifier);
+            let oldPosition = _trackedTouches[index].position;
+            let newPosition = new Vector2D(touch.pageX, touch.pageY);
             _trackedTouches[index].position = newPosition;
             handleInputAction(_touchAction, oldPosition, newPosition);
         }
@@ -554,10 +591,10 @@ function onTouchEnd(e: TouchEvent) {
         var touches = e.changedTouches;
 
         for (var i = 0; i < touches.length; i++) {
-            var touch = touches[i];
-            var index = findTrackedTouchIndex(touches[i].identifier);
-            var oldPosition = _trackedTouches[index].position;
-            var newPosition = new Vector2D(touch.pageX, touch.pageY);
+            let touch = touches[i];
+            let index = findTrackedTouchIndex(touches[i].identifier);
+            let oldPosition = _trackedTouches[index].position;
+            let newPosition = new Vector2D(touch.pageX, touch.pageY);
             handleInputAction(_touchAction, oldPosition, newPosition);
             _trackedTouches.splice(index, 1);
         }
@@ -575,7 +612,7 @@ function onTouchCancel(e: TouchEvent) {
         var touches = e.changedTouches;
 
         for (var i = 0; i < touches.length; i++) {
-            var index = findTrackedTouchIndex(touches[i].identifier);
+            let index = findTrackedTouchIndex(touches[i].identifier);
             _trackedTouches.splice(index, 1);
         }
 

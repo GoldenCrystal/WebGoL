@@ -19,5 +19,5 @@ void main(void) {
 
     float c = texture2D(uSampler, vPosition).x;
 
-    gl_FragColor = vec4(vec3(n > 2.5 - c && n < 3.5), 1.0);
+    gl_FragColor = vec4(vec3(n == 3.0 || n == (c > 0.0 ? 2.0 : 6.0)), 1.0);
 }

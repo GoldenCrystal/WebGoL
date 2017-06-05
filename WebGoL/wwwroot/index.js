@@ -177,6 +177,8 @@ define("index", ["require", "exports", "vector-math"], function (require, export
     var shaderValues = {
         "gol-vs": null,
         "gol-fs": null,
+        "gol-ml-fs": null,
+        "hl-fs": null,
         "vis-vs": null,
         "vis-fs": null,
         "vis-grid-fs": null,
@@ -213,6 +215,8 @@ define("index", ["require", "exports", "vector-math"], function (require, export
                         return [4 /*yield*/, Promise.all([
                                 fetch("/shaders/gol.vert"),
                                 fetch("/shaders/gol.frag"),
+                                fetch("/shaders/gol.multilayer.frag"),
+                                fetch("/shaders/highlife.frag"),
                                 fetch("/shaders/vis.vert"),
                                 fetch("/shaders/vis.frag"),
                                 fetch("/shaders/vis.grid.frag"),
@@ -224,9 +228,11 @@ define("index", ["require", "exports", "vector-math"], function (require, export
                         textBodies = _a.sent();
                         shaderValues["gol-vs"] = textBodies[0];
                         shaderValues["gol-fs"] = textBodies[1];
-                        shaderValues["vis-vs"] = textBodies[2];
-                        shaderValues["vis-fs"] = textBodies[3];
-                        shaderValues["vis-grid-fs"] = textBodies[4];
+                        shaderValues["gol-ml-fs"] = textBodies[2];
+                        shaderValues["hl-fs"] = textBodies[3];
+                        shaderValues["vis-vs"] = textBodies[4];
+                        shaderValues["vis-fs"] = textBodies[5];
+                        shaderValues["vis-grid-fs"] = textBodies[6];
                         return [3 /*break*/, 4];
                     case 3:
                         e_2 = _a.sent();
@@ -252,7 +258,14 @@ define("index", ["require", "exports", "vector-math"], function (require, export
     }
     function setupWebGL() {
         _isContextCreated = false;
-        _gl = _canvas.getContext("webgl") || _canvas.getContext("experimental-webgl") || null;
+        var options = {
+            alpha: false,
+            depth: false,
+            stencil: false,
+            antialias: false,
+            preserveDrawingBuffer: false
+        };
+        _gl = _canvas.getContext("webgl", options) || _canvas.getContext("experimental-webgl", options) || null;
         if (!_gl) {
             console.error("Could not get WebGL context.");
             return;
@@ -263,6 +276,8 @@ define("index", ["require", "exports", "vector-math"], function (require, export
         }
         _gl.clearColor(0.0, 0.0, 0.0, 1.0);
         _gl.clear(_gl.COLOR_BUFFER_BIT | _gl.DEPTH_BUFFER_BIT);
+        _gl.disable(_gl.BLEND);
+        _gl.disable(_gl.DEPTH_TEST);
         if (!(_frontBuffer = createFrameBuffer(_bufferWidth, _bufferHeight))) {
             console.error("Could not create frame buffer.");
             return;
@@ -320,18 +335,34 @@ define("index", ["require", "exports", "vector-math"], function (require, export
         _reseedGameOfLifeButton.addEventListener("click", function (e) { return setRandomPixels(_frontBuffer.texture, getSeedPixelCount()); });
         _resetViewButton.addEventListener("click", resetView);
     }
+    var _red = new Uint8Array([255, 0, 0, 255]);
+    var _yellow = new Uint8Array([255, 255, 0, 255]);
+    var _green = new Uint8Array([0, 255, 0, 255]);
+    var _cyan = new Uint8Array([0, 255, 255, 255]);
+    var _blue = new Uint8Array([0, 0, 255, 255]);
+    var _magenta = new Uint8Array([255, 0, 255, 255]);
     var _white = new Uint8Array([255, 255, 255, 255]);
-    var _black = new Uint8Array([0, 0, 0, 0]);
+    var _black = new Uint8Array([0, 0, 0, 255]);
+    var _colors = [_red, _yellow, _green, _cyan, _blue, _magenta, _white];
+    function createInitializedBuffer() {
+        var buffer = new Uint8Array((_bufferWidth * _bufferHeight) << 2);
+        var n = _bufferWidth * _bufferHeight;
+        for (var i = 0; i < n; i++) {
+            buffer.set(_black, i << 2);
+        }
+        return buffer;
+    }
     function clearPixels(texture) {
         _gl.bindTexture(_gl.TEXTURE_2D, texture);
-        _gl.texImage2D(_gl.TEXTURE_2D, 0, _gl.RGBA, _bufferWidth, _bufferHeight, 0, _gl.RGBA, _gl.UNSIGNED_BYTE, new Uint8Array(_bufferWidth * _bufferHeight * 4));
+        _gl.texImage2D(_gl.TEXTURE_2D, 0, _gl.RGBA, _bufferWidth, _bufferHeight, 0, _gl.RGBA, _gl.UNSIGNED_BYTE, createInitializedBuffer());
     }
     function setRandomPixels(texture, pixelCount) {
-        var buffer = new Uint8Array(_bufferWidth * _bufferHeight * 4);
+        var buffer = createInitializedBuffer();
         for (var i = 0; i < pixelCount; i++) {
             var x = Math.round(Math.random() * (_bufferWidth - 1));
             var y = Math.round(Math.random() * (_bufferHeight - 1));
-            buffer.set(_white, (y * _bufferWidth + x) * 4);
+            var color = _white;
+            buffer.set(color, (y * _bufferWidth + x) << 2);
         }
         _gl.bindTexture(_gl.TEXTURE_2D, texture);
         _gl.texImage2D(_gl.TEXTURE_2D, 0, _gl.RGBA, _bufferWidth, _bufferHeight, 0, _gl.RGBA, _gl.UNSIGNED_BYTE, buffer);

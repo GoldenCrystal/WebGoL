@@ -6,7 +6,7 @@ uniform mediump vec2 uPixelSize;
 varying mediump vec2 vPosition;
 
 void main(void) {  
-    float n = (texture2D(uSampler, vPosition + uPixelSize * vec2(-1.0, -1.0))
+    vec3 n = (texture2D(uSampler, vPosition + uPixelSize * vec2(-1.0, -1.0))
         + texture2D(uSampler, vPosition + uPixelSize * vec2(0.0, -1.0))
         + texture2D(uSampler, vPosition + uPixelSize * vec2(1.0, -1.0))
 
@@ -15,9 +15,9 @@ void main(void) {
 
         + texture2D(uSampler, vPosition + uPixelSize * vec2(-1.0, 1.0))
         + texture2D(uSampler, vPosition + uPixelSize * vec2(0.0, 1.0))
-        + texture2D(uSampler, vPosition + uPixelSize * vec2(1.0, 1.0))).x;
+        + texture2D(uSampler, vPosition + uPixelSize * vec2(1.0, 1.0))).xyz;
 
-    float c = texture2D(uSampler, vPosition).x;
+    vec3 c = texture2D(uSampler, vPosition).xyz;
 
-    gl_FragColor = vec4(vec3(n > 2.5 - c && n < 3.5), 1.0);
+    gl_FragColor = vec4(vec3(greaterThan(n, 2.5 - c)) * vec3(lessThan(n, vec3(3.5))), 1.0);
 }
